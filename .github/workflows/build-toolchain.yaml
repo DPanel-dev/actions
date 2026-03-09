@@ -62,6 +62,8 @@ jobs:
 
   release-synology:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
@@ -83,7 +85,7 @@ jobs:
         with:
           tag_name: build-toolchain
           files: ${{ matrix.name }}
-          make_latest: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -113,6 +115,6 @@ jobs:
         with:
           tag_name: build-toolchain
           files: artifacts/*
-          make_latest: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

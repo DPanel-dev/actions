@@ -1,0 +1,153 @@
+name: Parallel Download and Build Toolchain Store
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # 初始任务：创建 Release 占位符
+  init-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dpanel-build-resources
+          name: "DPanel Build Resources Collection"
+          body: "All-in-one build resources for DPanel. Files are uploaded and processed into dpanel/builder:latest"
+          draft: false
+          prerelease: false
+          make_latest: true
+
+  # 任务 1：GNU 工具链
+  download-gnu:
+    needs: init-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download GNU
+        run: |
+          mkdir -p artifacts
+          curl -SL -o artifacts/amd64-gnu-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/arm64-gnu-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/arm-gnu-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/amd64-gnu-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--bleeding-edge-2023.11-1.tar.bz2
+          curl -SL -o artifacts/arm64-gnu-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--bleeding-edge-2023.11-1.tar.bz2
+          curl -SL -o artifacts/arm-gnu-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--bleeding-edge-2023.11-1.tar.bz2
+      - name: Upload GNU
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dpanel-build-resources
+          files: artifacts/*
+
+  # 任务 2：Musl 工具链
+  download-musl:
+    needs: init-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Musl
+        run: |
+          mkdir -p artifacts
+          curl -SL -o artifacts/amd64-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/arm64-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/arm-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-2023.08-1.tar.bz2
+          curl -SL -o artifacts/amd64-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--bleeding-edge-2023.11-1.tar.bz2
+          curl -SL -o artifacts/arm64-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--bleeding-edge-2023.11-1.tar.bz2
+          curl -SL -o artifacts/arm-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--bleeding-edge-2023.11-1.tar.bz2
+      - name: Upload Musl
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dpanel-build-resources
+          files: artifacts/*
+
+  # 任务 3：Extra 资源
+  download-extra:
+    needs: init-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Extra
+        run: |
+          mkdir -p artifacts
+          curl -SL -o artifacts/arm64-synology-7.1.txz https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Realtek%20RTD129x%20Linux%204.4.180/rtd1296-gcc850_glibc226_armv8-GPL.txz 
+          curl -SL -o artifacts/amd64-synology-7.1.txz https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Intel%20x86%20Linux%204.4.180%20%28GeminiLake%29/geminilake-gcc850_glibc226_x86_64-GPL.txz
+          # fnpack
+          curl -sSL -o artifacts/amd64-linux-fnpack https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64
+          chmod +x artifacts/amd64-linux-fnpack
+      - name: Upload Extra
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dpanel-build-resources
+          files: artifacts/*
+
+  # 核心任务：构建母厂镜像
+  build-and-push:
+    needs: [download-gnu, download-musl, download-extra]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all files from Release
+        run: |
+          mkdir -p toolchains-dir
+          gh release download dpanel-build-resources --dir toolchains-dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Inline Dockerfile
+        # 使用单引号 'EOF' 防止 bash 提前解析里面的反斜杠和变量
+        run: |
+          cat <<'EOF' > Dockerfile
+          # --- 解压阶段 ---
+          FROM alpine:latest AS unpacker
+          RUN apk add --no-cache tar xz bzip2 bash binutils
+          WORKDIR /opt/toolchains
+          COPY toolchains-dir/ /tmp/artifacts/
+          RUN /bin/bash -o pipefail -e -c ' \
+              for pkg in /tmp/artifacts/*; do \
+                  filename=$(basename "$pkg"); \
+                  [[ "$filename" != *.tar.bz2 && "$filename" != *.txz ]] && continue; \
+                  DIR=$(echo "$filename" | sed -E "s/\.(tar\.bz2|txz)$//"); \
+                  mkdir -p "$DIR"; \
+                  [[ "$filename" == *.bz2 ]] && OPT="-j" || OPT="-J"; \
+                  echo ">> Unpacking: $filename"; \
+                  tar ${OPT}xf "$pkg" -C "$DIR" --strip-components=1; \
+                  rm -rf "$DIR"/{share,doc,man,info}; \
+                  find "$DIR/bin" "$DIR/libexec" -type f -executable -exec strip --strip-unneeded {} + 2>/dev/null || true; \
+              done'
+
+          # --- 存储阶段 (基于 Scratch 以实现极致体积和物理分层) ---
+          FROM scratch
+          # 物理分层拷贝，确保远程拉取时支持按目录提取
+          COPY --from=unpacker /opt/toolchains/amd64-gnu-12.3  /opt/toolchains/amd64-gnu-12.3
+          COPY --from=unpacker /opt/toolchains/arm64-gnu-12.3  /opt/toolchains/arm64-gnu-12.3
+          COPY --from=unpacker /opt/toolchains/arm-gnu-12.3    /opt/toolchains/arm-gnu-12.3
+          COPY --from=unpacker /opt/toolchains/amd64-gnu-13.2  /opt/toolchains/amd64-gnu-13.2
+          COPY --from=unpacker /opt/toolchains/arm64-gnu-13.2  /opt/toolchains/arm64-gnu-13.2
+          COPY --from=unpacker /opt/toolchains/arm-gnu-13.2    /opt/toolchains/arm-gnu-13.2
+          COPY --from=unpacker /opt/toolchains/amd64-musl-12.3 /opt/toolchains/amd64-musl-12.3
+          COPY --from=unpacker /opt/toolchains/arm64-musl-12.3 /opt/toolchains/arm64-musl-12.3
+          COPY --from=unpacker /opt/toolchains/arm-musl-12.3   /opt/toolchains/arm-musl-12.3
+          COPY --from=unpacker /opt/toolchains/amd64-musl-13.2 /opt/toolchains/amd64-musl-13.2
+          COPY --from=unpacker /opt/toolchains/arm64-musl-13.2 /opt/toolchains/arm64-musl-13.2
+          COPY --from=unpacker /opt/toolchains/arm-musl-13.2   /opt/toolchains/arm-musl-13.2
+          COPY --from=unpacker /opt/toolchains/amd64-synology-7.1 /opt/toolchains/amd64-synology-7.1
+          COPY --from=unpacker /opt/toolchains/arm64-synology-7.1 /opt/toolchains/arm64-synology-7.1
+          # 工具类
+          COPY --from=unpacker /tmp/artifacts/amd64-linux-fnpack /opt/tools/fnpack
+          EOF
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: dpanel/builder:latest

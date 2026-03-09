@@ -7,8 +7,33 @@ jobs:
   build-images:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        target: [libc12, libc13, synology]
+        include:
+          # --- Musl 12.3 ---
+          - { name: "amd64-musl-12.3", url: "https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--stable-2023.08-1.tar.bz2" }
+          - { name: "arm64-musl-12.3", url: "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2023.08-1.tar.bz2" }
+          - { name: "arm-musl-12.3",   url: "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-2023.08-1.tar.bz2" }
+          
+          # --- Musl 13.2 ---
+          - { name: "amd64-musl-13.2", url: "https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--bleeding-edge-2023.11-1.tar.bz2" }
+          - { name: "arm64-musl-13.2", url: "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--bleeding-edge-2023.11-1.tar.bz2" }
+          - { name: "arm-musl-13.2",   url: "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--bleeding-edge-2023.11-1.tar.bz2" }
+          
+          # --- GNU 12.3 ---
+          - { name: "amd64-gnu-12.3",  url: "https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--stable-2023.08-1.tar.bz2" }
+          - { name: "arm64-gnu-12.3",  url: "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2023.08-1.tar.bz2" }
+          - { name: "arm-gnu-12.3",    url: "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2023.08-1.tar.bz2" }
+          
+          # --- GNU 13.2 ---
+          - { name: "amd64-gnu-13.2",  url: "https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--bleeding-edge-2023.11-1.tar.bz2" }
+          - { name: "arm64-gnu-13.2",  url: "https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--bleeding-edge-2023.11-1.tar.bz2" }
+          - { name: "arm-gnu-13.2",    url: "https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--bleeding-edge-2023.11-1.tar.bz2" }
+
+          # --- Synology ---
+          - { name: "amd64-synology-7.1", url: "https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Intel%20x86%20Linux%204.4.180%20%28GeminiLake%29/geminilake-gcc850_glibc226_x86_64-GPL.txz" }
+          - { name: "arm64-synology-7.1", url: "https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Realtek%20RTD129x%20Linux%204.4.180/rtd1296-gcc850_glibc226_armv8-GPL.txz" }
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,11 +55,14 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./build-toolchain/Dockerfile-${{ matrix.target }}
+          file: ./build-toolchain/Dockerfile-libc
           push: true
+          build-args: |
+            DOWNLOAD_URL=${{ matrix.url }}
+            TARGET_DIR=${{ matrix.name }}
           tags: |
-            dpanel/builder:${{ matrix.target }}
-            registry.cn-hangzhou.aliyuncs.com/dpanel/builder:${{ matrix.target }}
+            dpanel/builder:${{ matrix.name }}
+            registry.cn-hangzhou.aliyuncs.com/dpanel/builder:${{ matrix.name }}
 
   release-tools:
     runs-on: ubuntu-latest

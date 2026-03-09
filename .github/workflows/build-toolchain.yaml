@@ -31,7 +31,20 @@ jobs:
           curl -SL -o artifacts/amd64-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--stable-2023.08-1.tar.bz2
           curl -SL -o artifacts/arm64-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2023.08-1.tar.bz2
           curl -SL -o artifacts/arm-musl-12.3.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--stable-2023.08-1.tar.bz2
-      - name: Upload
+          
+          # 生成专属清单
+          echo "[" > artifacts/libc-12-manifest.json
+          first=true
+          for f in artifacts/*.tar.bz2; do
+            [ -e "$f" ] || continue
+            if [ "$first" = false ]; then echo "," >> artifacts/libc-12-manifest.json; fi
+            dir=$(basename "$f" | sed -E "s/\.tar\.bz2$//")
+            echo "  {\"name\": \"$dir\", \"path\": \"/toolchains/$dir\"}" >> artifacts/libc-12-manifest.json
+            first=false
+          done
+          echo "]" >> artifacts/libc-12-manifest.json
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-toolchain
@@ -66,7 +79,20 @@ jobs:
           curl -SL -o artifacts/amd64-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--musl--bleeding-edge-2023.11-1.tar.bz2
           curl -SL -o artifacts/arm64-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--bleeding-edge-2023.11-1.tar.bz2
           curl -SL -o artifacts/arm-musl-13.2.tar.bz2 https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--musl--bleeding-edge-2023.11-1.tar.bz2
-      - name: Upload
+          
+          # 生成专属清单
+          echo "[" > artifacts/libc-13-manifest.json
+          first=true
+          for f in artifacts/*.tar.bz2; do
+            [ -e "$f" ] || continue
+            if [ "$first" = false ]; then echo "," >> artifacts/libc-13-manifest.json; fi
+            dir=$(basename "$f" | sed -E "s/\.tar\.bz2$//")
+            echo "  {\"name\": \"$dir\", \"path\": \"/toolchains/$dir\"}" >> artifacts/libc-13-manifest.json
+            first=false
+          done
+          echo "]" >> artifacts/libc-13-manifest.json
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-toolchain
@@ -97,7 +123,20 @@ jobs:
           mkdir -p artifacts
           curl -SL -o artifacts/arm64-synology-7.1.txz https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Realtek%20RTD129x%20Linux%204.4.180/rtd1296-gcc850_glibc226_armv8-GPL.txz 
           curl -SL -o artifacts/amd64-synology-7.1.txz https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Intel%20x86%20Linux%204.4.180%20%28GeminiLake%29/geminilake-gcc850_glibc226_x86_64-GPL.txz
-      - name: Upload
+          
+          # 生成专属清单
+          echo "[" > artifacts/synology-manifest.json
+          first=true
+          for f in artifacts/*.txz; do
+            [ -e "$f" ] || continue
+            if [ "$first" = false ]; then echo "," >> artifacts/synology-manifest.json; fi
+            dir=$(basename "$f" | sed -E "s/\.txz$//")
+            echo "  {\"name\": \"$dir\", \"path\": \"/toolchains/$dir\"}" >> artifacts/synology-manifest.json
+            first=false
+          done
+          echo "]" >> artifacts/synology-manifest.json
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-toolchain
@@ -127,7 +166,21 @@ jobs:
         run: |
           mkdir -p artifacts
           curl -sSL -o artifacts/amd64-linux-fnpack https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64
-      - name: Upload
+          
+          # 生成专属清单
+          echo "[" > artifacts/tool-manifest.json
+          first=true
+          for f in artifacts/*; do
+            [ -e "$f" ] || continue
+            [[ "$f" == *"manifest.json" ]] && continue
+            if [ "$first" = false ]; then echo "," >> artifacts/tool-manifest.json; fi
+            name=$(basename "$f")
+            echo "  {\"name\": \"$name\", \"path\": \"/tools/$name\"}" >> artifacts/tool-manifest.json
+            first=false
+          done
+          echo "]" >> artifacts/tool-manifest.json
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-toolchain

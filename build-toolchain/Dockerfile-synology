@@ -1,0 +1,14 @@
+FROM alpine:latest AS downloader
+RUN apk add --no-cache curl tar xz binutils
+
+FROM downloader AS stage-amd64
+RUN mkdir -p /opt/toolchains/amd64-synology-7.1 && \
+    curl -SL https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Intel%20x86%20Linux%204.4.180%20%28GeminiLake%29/geminilake-gcc850_glibc226_x86_64-GPL.txz | tar -Jxf - -C /opt/toolchains/amd64-synology-7.1 --strip-components=1
+
+FROM downloader AS stage-arm64
+RUN mkdir -p /opt/toolchains/arm64-synology-7.1 && \
+    curl -SL https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Realtek%20RTD129x%20Linux%204.4.180/rtd1296-gcc850_glibc226_armv8-GPL.txz | tar -Jxf - -C /opt/toolchains/arm64-synology-7.1 --strip-components=1
+
+FROM scratch
+COPY --from=stage-amd64 /opt/ /
+COPY --from=stage-arm64 /opt/ /

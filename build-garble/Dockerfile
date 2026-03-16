@@ -6,9 +6,6 @@ RUN apk add --no-cache \
     git \
     gcc \
     musl-dev \
-    gpgme-dev \
-    libassuan-dev \
-    pkgconfig \
     ca-certificates
 
 # 安装最新版 garble
@@ -16,5 +13,4 @@ RUN go install mvdan.cc/garble@latest
 
 WORKDIR /src
 
-# 设置默认入口为 garble
-ENTRYPOINT ["garble"]
+CMD ["/bin/sh"]

@@ -25,7 +25,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./build-garble
           file: ./build-garble/Dockerfile
           platforms: linux/amd64
           push: true

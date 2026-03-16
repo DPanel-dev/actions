@@ -14,7 +14,7 @@ ENV GARBLE_SEED="" \
     TARGET_BRANCH="master" \
     APP_FAMILY="pe"
 
-COPY ./docker-garble/entrypoint.sh /entrypoint.sh
+COPY ./build-garble/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # 接管容器启动入口

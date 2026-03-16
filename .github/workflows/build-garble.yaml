@@ -25,7 +25,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6
         with:
-          context: ./build-garble  # 1. 此时 Docker 已经进入了这个目录
+          context: .
           file: ./build-garble/Dockerfile
           platforms: linux/amd64
           push: true

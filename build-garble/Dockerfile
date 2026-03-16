@@ -6,4 +6,14 @@ RUN go install mvdan.cc/garble@latest
 
 WORKDIR /src
 
-CMD ["/bin/sh"]
+# ==========================================
+ENV GARBLE_SEED="" \
+    GIT_TOKEN="" 
+
+ENV TARGET_BRANCH="master" \
+    APP_FAMILY="pe"
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

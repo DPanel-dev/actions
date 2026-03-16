@@ -1,19 +1,21 @@
-FROM golang:1.25-alpine
+FROM golang:1.25-bookworm
 
-RUN apk add --no-cache git gcc musl-dev linux-headers ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN go install mvdan.cc/garble@latest
 
 WORKDIR /src
 
-# ==========================================
 ENV GARBLE_SEED="" \
-    GIT_TOKEN="" 
-
-ENV TARGET_BRANCH="master" \
+    GIT_TOKEN="" \
+    TARGET_BRANCH="master" \
     APP_FAMILY="pe"
 
-COPY entrypoint.sh /entrypoint.sh
+COPY ./docker-garble/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# 接管容器启动入口
 ENTRYPOINT ["/entrypoint.sh"]

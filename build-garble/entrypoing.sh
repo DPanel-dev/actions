@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # ==========================================
@@ -15,7 +15,7 @@ if [ -z "$GIT_TOKEN" ]; then
 fi
 
 # ==========================================
-# 2. 配置 Git 凭证 (拉取私有库全靠它)
+# 2. 配置 Git 凭证 (用于无密码拉取私有库)
 # ==========================================
 echo ">> [1/4] 配置 Git 凭证..." >&2
 git config --global url."https://${GIT_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
@@ -24,6 +24,9 @@ git config --global url."https://${GIT_TOKEN}:x-oauth-basic@github.com/".instead
 # 3. 实时拉取指定分支的干净代码
 # ==========================================
 echo ">> [2/4] 正在拉取代码 (分支/Tag: $TARGET_BRANCH)..." >&2
+# 清空 /src 确保绝对纯净
+rm -rf /src/* /src/.[!.]* 2>/dev/null || true
+
 git clone --depth 1 -b "$TARGET_BRANCH" https://github.com/donknap/dpanel.git /src >&2
 
 # 拉取 pro 模块
@@ -47,4 +50,4 @@ go mod download >&2
 
 echo ">> [4/4] 环境就绪！正在进行 AST 语法树推导与日志还原..." >&2
 # 读取外部传入的标准输入日志并进行 reverse
-exec garble -seed="$GARBLE_SEED" reverse -tags "pe,w7_rangine_release,containers_image_openpgp" /src/*.go
+exec garble -seed="$GARBLE_SEED" reverse -tags "${APP_FAMILY},w7_rangine_release,containers_image_openpgp" /src/*.go

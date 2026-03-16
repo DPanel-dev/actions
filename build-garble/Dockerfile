@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN go install mvdan.cc/garble@latest
+RUN go install mvdan.cc/garble@latest && ls -R .
 
 WORKDIR /src
 

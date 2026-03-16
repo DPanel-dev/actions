@@ -1,9 +1,10 @@
 FROM golang:1.25-bookworm
 
-COPY . /src
 WORKDIR /src
-
+COPY . .
 RUN ls -al /src
+
+RUN chmod +x ./build-garble/entrypoint.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -14,7 +15,5 @@ ENV GARBLE_SEED="" \
     GIT_TOKEN="" \
     TARGET_BRANCH="master" \
     APP_FAMILY="pe"
-
-RUN chmod +x /src/build-garble/entrypoint.sh
 
 ENTRYPOINT ["/src/build-garble/entrypoint.sh"]

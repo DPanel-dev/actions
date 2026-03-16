@@ -20,8 +20,4 @@ ENV GARBLE_SEED="" \
     TARGET_BRANCH="master" \
     APP_FAMILY="pe"
 
-COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-# 接管容器启动入口
-ENTRYPOINT ["/entrypoint.sh"]

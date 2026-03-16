@@ -4,7 +4,7 @@ WORKDIR /src
 COPY . .
 RUN ls -al /src
 
-RUN chmod +x ./build-garble/entrypoint.sh
+RUN chmod +x /src/build-garble/entrypoint.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \

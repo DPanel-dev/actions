@@ -100,15 +100,25 @@ jobs:
     steps:
       - name: Download Tools
         run: |
+          set -euo pipefail
           mkdir -p artifacts
           # Docker Windows
-          LATEST_ZIP=$(curl -sS https://download.docker.com/win/static/stable/x86_64/ | grep -oE 'docker-[0-9.]+\.zip' | tail -n 1)
-          curl -sSL "https://download.docker.com/win/static/stable/x86_64/$LATEST_ZIP" -o docker.zip
-          unzip -q docker.zip && mv docker/docker.exe artifacts/amd64-windows-docker.exe
+          DOCKER_VERSION=$(skopeo list-tags docker://docker.io/dockereng/cli-bin | jq -er '.Tags[] | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -n 1)
+          for ARCH in amd64 arm64; do
+            skopeo --override-os windows --override-arch "$ARCH" copy \
+              "docker://docker.io/dockereng/cli-bin:$DOCKER_VERSION" "dir:docker-$ARCH"
+            LAYER_DIGEST=$(jq -er '.layers | if length == 1 then .[0].digest else error("Expected a single Docker CLI binary layer") end' "docker-$ARCH/manifest.json")
+            tar -xOf "docker-$ARCH/${LAYER_DIGEST#sha256:}" docker.exe > "artifacts/${ARCH}-windows-docker.exe"
+          done
           
           # Docker Compose Windows
-          URL=$(curl -sS https://api.github.com/repos/docker/compose/releases/latest | jq -r '.assets[] | select(.name == "docker-compose-windows-x86_64.exe") | .browser_download_url')
-          curl -sSL -o "artifacts/amd64-windows-docker-compose.exe" "$URL"
+          COMPOSE_RELEASE=$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest)
+          for PLATFORM in amd64:x86_64 arm64:aarch64; do
+            ARCH=${PLATFORM%:*}
+            UPSTREAM_ARCH=${PLATFORM#*:}
+            URL=$(jq -er --arg name "docker-compose-windows-${UPSTREAM_ARCH}.exe" '.assets[] | select(.name == $name) | .browser_download_url' <<< "$COMPOSE_RELEASE")
+            curl -fsSL -o "artifacts/${ARCH}-windows-docker-compose.exe" "$URL"
+          done
           
           # fnpack
           curl -sSL -o artifacts/amd64-linux-fnpack https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64

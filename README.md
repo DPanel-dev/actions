@@ -33,8 +33,8 @@ Docker CLI 两种架构统一使用 Skopeo 下载官方 `dockereng/cli-bin` 镜�
 
 复用仓库 Secrets `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`ALIYUN_USERNAME`、`ALIYUN_PASSWORD`，账号需要对各自的 `dpanel/store` 镜像仓库具备读取和推送权限；按平台要求提前创建对应仓库。workflow 合入默认分支后才会启用定时触发。
 
-每次先确定上游 SHA，再获取该提交，避免检查后分支更新导致标签与内容不一致。Docker Hub 先发布 `<来源>-sha-<完整提交 SHA>`，再更新对应来源 tag；阿里云从该 SHA 标签复制，先同步同名 SHA 标签、最后更新来源 tag。定时比较以 Docker Hub 实际发布的来源 tag 为准，不另存成功标记。三个仓库独立执行，单个失败不取消其他仓库；工作流之间串行运行，避免交叉覆盖来源 tag。
+每次先确定上游 SHA，再获取该提交，避免检查后分支更新导致标签与内容不一致。每个来源只使用表中的固定 tag，提交 SHA 保存在镜像的 `com.dpanel.revision` label 中，不生成额外的 SHA tag。Docker Hub 发布后，Skopeo 将该固定 tag 同步到阿里云的同名 tag。定时比较读取 Docker Hub 镜像的 `com.dpanel.revision` label，不另存成功标记。三个仓库独立执行，单个失败不取消其他仓库；工作流之间串行运行，避免交叉覆盖来源 tag。
 
 镜像沿用 plugin 的 `scratch` 空镜像与根目录布局，例如仓库的 `apps/example/docker-compose.yml` 在镜像内仍为 `/apps/example/docker-compose.yml`。按 Git 跟踪清单打包检出文件，保留隐藏配置、文档、许可证和脚本，排除 `.git`、未跟踪文件及打包临时文件；归档不受 `export-ignore` / `export-subst` 影响。不执行上游的 Dockerfile 或脚本，不递归拉取子模块，不下载 Git LFS 对象（保留指针文件）。一致性以同一提交、相同检出方式的仓库文件为准，不包含 Git 元数据、文件属主和时间戳。
 
-这是用于提取文件的 `linux/amd64` 数据镜像，无启动命令。镜像包含 `org.opencontainers.image.source`、`org.opencontainers.image.revision`、`com.dpanel.plugin.source` 和 `com.dpanel.plugin.root=/` 标签。服务端商店的镜像同步接入与解包行为需单独验证，发布成功不代表该消费链路已经可用。
+这是用于提取文件的 `linux/amd64` 数据镜像，无启动命令。镜像包含 `com.dpanel.revision`、`com.dpanel.plugin.source` 和 `com.dpanel.plugin.root=/` 标签。服务端商店的镜像同步接入与解包行为需单独验证，发布成功不代表该消费链路已经可用。

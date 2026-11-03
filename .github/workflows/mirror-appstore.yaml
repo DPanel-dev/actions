@@ -62,7 +62,7 @@ jobs:
           if skopeo inspect --config --retry-times 3 \
             --authfile "${DOCKER_CONFIG:-$HOME/.docker}/config.json" \
             "docker://$DOCKER_IMAGE:$IMAGE_TAG" > "$RUNNER_TEMP/image-config.json"; then
-            revision=$(jq -r '.config.Labels["org.opencontainers.image.revision"] // ""' "$RUNNER_TEMP/image-config.json")
+            revision=$(jq -r '.config.Labels["com.dpanel.revision"] // ""' "$RUNNER_TEMP/image-config.json")
             source=$(jq -r '.config.Labels["com.dpanel.plugin.source"] // ""' "$RUNNER_TEMP/image-config.json")
             root=$(jq -r '.config.Labels["com.dpanel.plugin.root"] // ""' "$RUNNER_TEMP/image-config.json")
             if [[ "$revision" == "$SOURCE_REVISION" && "$source" == "$SOURCE_URL" && "$root" == / ]]; then
@@ -103,13 +103,11 @@ jobs:
         run: |
           set -euo pipefail
           docker build --no-cache --provenance=false --platform linux/amd64 \
-            --label "org.opencontainers.image.source=$SOURCE_URL" \
-            --label "org.opencontainers.image.revision=$SOURCE_REVISION" \
+            --label "com.dpanel.revision=$SOURCE_REVISION" \
             --label "com.dpanel.plugin.source=$SOURCE_URL" \
             --label com.dpanel.plugin.root=/ \
-            --tag "$DOCKER_IMAGE:$IMAGE_TAG-sha-$SOURCE_REVISION" --tag "$DOCKER_IMAGE:$IMAGE_TAG" \
+            --tag "$DOCKER_IMAGE:$IMAGE_TAG" \
             "$RUNNER_TEMP/repository-image"
-          docker push "$DOCKER_IMAGE:$IMAGE_TAG-sha-$SOURCE_REVISION"
           docker push "$DOCKER_IMAGE:$IMAGE_TAG"
           echo "$SOURCE_URL: published $DOCKER_IMAGE:$IMAGE_TAG ($SOURCE_REVISION)." >> "$GITHUB_STEP_SUMMARY"
 
@@ -126,10 +124,8 @@ jobs:
         run: |
           set -euo pipefail
           # Retry registry synchronization even when Docker Hub already has this revision.
-          for tag in "$IMAGE_TAG-sha-$SOURCE_REVISION" "$IMAGE_TAG"; do
-            skopeo copy --all --preserve-digests --retry-times 3 \
-              --authfile "${DOCKER_CONFIG:-$HOME/.docker}/config.json" \
-              "docker://$DOCKER_IMAGE:$IMAGE_TAG-sha-$SOURCE_REVISION" \
-              "docker://$ALIYUN_IMAGE:$tag"
-          done
+          skopeo copy --all --preserve-digests --retry-times 3 \
+            --authfile "${DOCKER_CONFIG:-$HOME/.docker}/config.json" \
+            "docker://$DOCKER_IMAGE:$IMAGE_TAG" \
+            "docker://$ALIYUN_IMAGE:$IMAGE_TAG"
           echo "$SOURCE_URL: synced $ALIYUN_IMAGE:$IMAGE_TAG ($SOURCE_REVISION)." >> "$GITHUB_STEP_SUMMARY"

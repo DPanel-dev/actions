@@ -26,15 +26,28 @@ Docker CLI 两种架构统一使用 Skopeo 下载官方 `dockereng/cli-bin` 镜�
 | `okxlin/appstore` | `docker.io/dpanel/store:okxlin` | `registry.cn-hangzhou.aliyuncs.com/dpanel/store:okxlin` |
 
 - 手动运行：强制重新构建并发布三个仓库，不比较 SHA，不使用构建缓存。
-- 定时运行：每 4 小时检查一次，UTC 时间为 00:17、04:17、08:17、12:17、16:17、20:17；上游 SHA 与 Docker Hub 对应来源 tag 的提交标签一致，且来源、根目录标签匹配时跳过构建，否则构建。GitHub 调度可能延迟。
+- 定时运行：配置为每 4 小时检查一次，UTC 时间为 00:17、04:17、08:17、12:17、16:17、20:17。比较逻辑仍读取旧 `com.dpanel.revision`、`com.dpanel.plugin.source/root` label，尚未对齐新协议；新镜像不再写入这些字段，因此会判定需要构建。启用前需对齐比较逻辑。GitHub 调度可能延迟。
 - 修改 workflow 的 `schedule.cron` 即可调整频率，例如 `17 */6 * * *` 为每 6 小时，`17 0 * * *` 为每天一次。
 - 镜像尚未发布或远端版本读取失败时，保留错误日志并警告，再尝试构建和推送；不会将读取失败当成“没有变化”。上游查询失败则直接报错。
-- 最后执行 Skopeo 同步，使用 `--all --preserve-digests --retry-times 3` 保留镜像摘要；即使本次跳过构建也执行同步，Skopeo 复用目标已有层。Docker Hub 发布成功而阿里云同步失败时，下次定时运行可以只补同步，无需重新构建。
+- 最后执行 Skopeo 同步，使用 `--all --preserve-digests --retry-times 3` 保留镜像摘要；即使比较步骤判定跳过构建也执行同步，Skopeo 复用目标已有层。新协议的定时比较对齐前，不保证重试时仅补同步而不重新构建。
 
 复用仓库 Secrets `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`ALIYUN_USERNAME`、`ALIYUN_PASSWORD`，账号需要对各自的 `dpanel/store` 镜像仓库具备读取和推送权限；按平台要求提前创建对应仓库。workflow 合入默认分支后才会启用定时触发。
 
-每次先确定上游 SHA，再获取该提交，避免检查后分支更新导致标签与内容不一致。每个来源只使用表中的固定 tag，提交 SHA 保存在镜像的 `com.dpanel.revision` label 中，不生成额外的 SHA tag。Docker Hub 发布后，Skopeo 将该固定 tag 同步到阿里云的同名 tag。定时比较读取 Docker Hub 镜像的 `com.dpanel.revision` label，不另存成功标记。三个仓库独立执行，单个失败不取消其他仓库；工作流之间串行运行，避免交叉覆盖来源 tag。
+每次先确定上游 SHA，再获取该提交，避免检查后分支更新导致标签与内容不一致。每个来源只使用表中的固定 tag，不生成额外的 SHA tag。Buildx 使用 OCI media type 直接推送 Docker Hub，Skopeo 再将该固定 tag 同步到阿里云的同名 tag。三个仓库独立执行，单个失败不取消其他仓库；工作流之间串行运行，避免交叉覆盖来源 tag。
+
+镜像元数据遵循 [plugin 镜像元数据协议](https://github.com/DPanel-dev/plugin/blob/main/README.md#镜像元数据协议)：
+
+| 字段 | 本镜像取值 | 写入位置 |
+| --- | --- | --- |
+| `com.dpanel.version` | `rolling`，仅用于展示 | manifest annotation 和 config label |
+| `com.dpanel.release` | 实际打包的完整上游提交 SHA | manifest annotation 和 config label |
+| `com.dpanel.image.createdAt` | 本次打包的 UTC RFC 3339 时间 | config label |
+| `com.dpanel.store.source` | 表中的 GitHub 仓库地址，无 `.git` 后缀 | config label |
+| `com.dpanel.store.commit` | 实际打包的完整上游提交 SHA | config label |
+| `com.dpanel.store.root` | `/` | config label |
+
+两个版本字段的 annotation 与 label 使用相同值。不再写入旧 `com.dpanel.revision`、`com.dpanel.plugin.source/root` label。若以后目录选择或打包规则改变了有效内容，即使源码提交未变，也必须更换 `release`；`store.commit` 仍记录实际源码提交。
 
 镜像沿用 plugin 的 `scratch` 空镜像与根目录布局，例如仓库的 `apps/example/docker-compose.yml` 在镜像内仍为 `/apps/example/docker-compose.yml`。按 Git 跟踪清单打包检出文件，保留隐藏配置、文档、许可证和脚本，排除 `.git`、未跟踪文件及打包临时文件；归档不受 `export-ignore` / `export-subst` 影响。不执行上游的 Dockerfile 或脚本，不递归拉取子模块，不下载 Git LFS 对象（保留指针文件）。一致性以同一提交、相同检出方式的仓库文件为准，不包含 Git 元数据、文件属主和时间戳。
 
-这是用于提取文件的 `linux/amd64` 数据镜像，无启动命令。镜像包含 `com.dpanel.revision`、`com.dpanel.plugin.source` 和 `com.dpanel.plugin.root=/` 标签。服务端商店的镜像同步接入与解包行为需单独验证，发布成功不代表该消费链路已经可用。
+这是用于提取文件的单平台 `linux/amd64` 数据镜像，无启动命令。`store.root=/` 表示提取镜像根目录，提取后仍保留 `apps/` 等仓库目录；不能改为 `/apps`，否则按协议剥离前缀后会丢失服务端需要的 `apps/` 层级。服务端商店的镜像同步接入与解包行为需单独验证，发布成功不代表该消费链路已经可用。

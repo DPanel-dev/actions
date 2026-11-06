@@ -96,19 +96,30 @@ jobs:
             --null --verbatim-files-from --no-recursion --files-from=-
           printf 'FROM scratch\nADD repository.tar /\n' > "$RUNNER_TEMP/repository-image/Dockerfile"
 
+      - name: Set up Docker Buildx
+        if: github.event_name == 'workflow_dispatch' || steps.compare.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push to Docker Hub
         if: github.event_name == 'workflow_dispatch' || steps.compare.outputs.build == 'true'
         env:
           SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+          IMAGE_VERSION: rolling
         run: |
           set -euo pipefail
-          docker build --no-cache --provenance=false --platform linux/amd64 \
-            --label "com.dpanel.revision=$SOURCE_REVISION" \
-            --label "com.dpanel.plugin.source=$SOURCE_URL" \
-            --label com.dpanel.plugin.root=/ \
+          image_created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          docker buildx build --no-cache --provenance=false --platform linux/amd64 \
+            --output type=image,oci-mediatypes=true,push=true \
+            --annotation "manifest:com.dpanel.version=$IMAGE_VERSION" \
+            --annotation "manifest:com.dpanel.release=$SOURCE_REVISION" \
+            --label "com.dpanel.version=$IMAGE_VERSION" \
+            --label "com.dpanel.release=$SOURCE_REVISION" \
+            --label "com.dpanel.image.createdAt=$image_created_at" \
+            --label "com.dpanel.store.source=$SOURCE_URL" \
+            --label "com.dpanel.store.commit=$SOURCE_REVISION" \
+            --label com.dpanel.store.root=/ \
             --tag "$DOCKER_IMAGE:$IMAGE_TAG" \
             "$RUNNER_TEMP/repository-image"
-          docker push "$DOCKER_IMAGE:$IMAGE_TAG"
           echo "$SOURCE_URL: published $DOCKER_IMAGE:$IMAGE_TAG ($SOURCE_REVISION)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Login to Aliyun

@@ -25,11 +25,13 @@ Docker CLI 两种架构统一使用 Skopeo 下载官方 `dockereng/cli-bin` 镜�
 | `1Panel-dev/appstore` | `docker.io/dpanel/store:1panel` | `registry.cn-hangzhou.aliyuncs.com/dpanel/store:1panel` |
 | `okxlin/appstore` | `docker.io/dpanel/store:okxlin` | `registry.cn-hangzhou.aliyuncs.com/dpanel/store:okxlin` |
 
-- 手动运行：强制重新构建并发布三个仓库，不比较 SHA，不使用构建缓存。
-- 定时运行：配置为每 4 小时检查一次，UTC 时间为 00:17、04:17、08:17、12:17、16:17、20:17。比较逻辑仍读取旧 `com.dpanel.revision`、`com.dpanel.plugin.source/root` label，尚未对齐新协议；新镜像不再写入这些字段，因此会判定需要构建。启用前需对齐比较逻辑。GitHub 调度可能延迟。
+- 手动运行：检查版本并生成应用变化清单，仍强制重新构建并发布三个仓库，不使用构建缓存。
+- 定时运行：配置为每 4 小时检查一次，UTC 时间为 00:17、04:17、08:17、12:17、16:17、20:17。读取已发布镜像的 `com.dpanel.release` 和 `com.dpanel.store.commit/source/root` label，与锁定的上游 SHA、来源和根目录比较；一致则跳过构建。GitHub 调度可能延迟。
 - 修改 workflow 的 `schedule.cron` 即可调整频率，例如 `17 */6 * * *` 为每 6 小时，`17 0 * * *` 为每天一次。
 - 镜像尚未发布或远端版本读取失败时，保留错误日志并警告，再尝试构建和推送；不会将读取失败当成“没有变化”。上游查询失败则直接报错。
-- 最后执行 Skopeo 同步，使用 `--all --preserve-digests --retry-times 3` 保留镜像摘要；即使比较步骤判定跳过构建也执行同步，Skopeo 复用目标已有层。新协议的定时比较对齐前，不保证重试时仅补同步而不重新构建。
+- 最后执行 Skopeo 同步，使用 `--all --preserve-digests --retry-times 3` 保留镜像摘要；即使比较步骤判定跳过构建也执行同步，Skopeo 复用目标已有层。
+
+在 GitHub 的 **Actions → Mirror Appstore Repositories → 某次运行 → Summary** 查看各仓库有变化的应用名称。以 Docker Hub 镜像记录的 `com.dpanel.store.commit` 为基线，与本次上游快照比较，按 `apps/<应用目录名>/` 去重列出名称，不区分变化类型、不展示文件明细，忽略应用目录外的公共文件。没有应用变化时明确显示“无应用变化”；发布记录或源码快照不可用时显示“无法比较”。清单表示检测结果，发布是否成功以任务状态为准；阿里云失败后的下次比较仍以 Docker Hub 已发布的 commit 为基线。
 
 复用仓库 Secrets `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`ALIYUN_USERNAME`、`ALIYUN_PASSWORD`，账号需要对各自的 `dpanel/store` 镜像仓库具备读取和推送权限；按平台要求提前创建对应仓库。workflow 合入默认分支后才会启用定时触发。
 

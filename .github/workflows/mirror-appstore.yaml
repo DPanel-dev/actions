@@ -53,42 +53,89 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Compare published revision
-        if: github.event_name == 'schedule'
         id: compare
         env:
           SOURCE_REVISION: ${{ steps.source.outputs.revision }}
         run: |
           set -euo pipefail
+          echo "### $SOURCE_URL" >> "$GITHUB_STEP_SUMMARY"
           if skopeo inspect --config --retry-times 3 \
             --authfile "${DOCKER_CONFIG:-$HOME/.docker}/config.json" \
             "docker://$DOCKER_IMAGE:$IMAGE_TAG" > "$RUNNER_TEMP/image-config.json"; then
-            revision=$(jq -r '.config.Labels["com.dpanel.revision"] // ""' "$RUNNER_TEMP/image-config.json")
-            source=$(jq -r '.config.Labels["com.dpanel.plugin.source"] // ""' "$RUNNER_TEMP/image-config.json")
-            root=$(jq -r '.config.Labels["com.dpanel.plugin.root"] // ""' "$RUNNER_TEMP/image-config.json")
-            if [[ "$revision" == "$SOURCE_REVISION" && "$source" == "$SOURCE_URL" && "$root" == / ]]; then
-              echo 'build=false' >> "$GITHUB_OUTPUT"
-              echo "$SOURCE_URL: unchanged ($SOURCE_REVISION), build skipped; Aliyun sync will still run." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
+            release=$(jq -r '.config.Labels["com.dpanel.release"] // ""' "$RUNNER_TEMP/image-config.json")
+            revision=$(jq -r '.config.Labels["com.dpanel.store.commit"] // ""' "$RUNNER_TEMP/image-config.json")
+            source=$(jq -r '.config.Labels["com.dpanel.store.source"] // ""' "$RUNNER_TEMP/image-config.json")
+            root=$(jq -r '.config.Labels["com.dpanel.store.root"] // ""' "$RUNNER_TEMP/image-config.json")
+            if [[ "$revision" =~ ^[0-9a-f]{40}$ && "$source" == "$SOURCE_URL" && "$root" == / ]]; then
+              echo "previous_revision=$revision" >> "$GITHUB_OUTPUT"
+              if [[ "$release" == "$SOURCE_REVISION" && "$revision" == "$SOURCE_REVISION" ]]; then
+                echo 'build=false' >> "$GITHUB_OUTPUT"
+                echo '已发布版本与上游一致；定时运行跳过构建，手动运行仍强制构建。阿里云补同步继续执行。' >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              echo '版本或元数据需要更新，将重新构建。' >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo '已发布镜像缺少有效的新元数据或来源、目录不匹配，将重新构建；无法确定应用变化基线。' >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo '::warning::Cannot read the published image revision. Attempting a build and push; see the registry error above.'
+            echo '无法读取已发布镜像（可能尚未发布或读取失败），将尝试构建；无法确定应用变化基线。' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo 'build=true' >> "$GITHUB_OUTPUT"
 
-      - name: Package repository files
+      - name: Fetch repository snapshot
         if: github.event_name == 'workflow_dispatch' || steps.compare.outputs.build == 'true'
         env:
           SOURCE_REVISION: ${{ steps.source.outputs.revision }}
           GIT_LFS_SKIP_SMUDGE: '1'
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/repository-image"
           git init "$RUNNER_TEMP/source"
           cd "$RUNNER_TEMP/source"
           git remote add origin "$SOURCE_URL.git"
           git -c protocol.version=2 fetch --depth=1 origin "$SOURCE_REVISION"
           git -c core.autocrlf=false checkout --detach FETCH_HEAD
           [[ "$(git rev-parse HEAD)" == "$SOURCE_REVISION" ]]
+
+      - name: Summarize application changes
+        if: ${{ !cancelled() && steps.source.outcome == 'success' && steps.compare.outcome == 'success' }}
+        env:
+          SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+          PREVIOUS_REVISION: ${{ steps.compare.outputs.previous_revision }}
+        run: |
+          set -euo pipefail
+          printf '### %s：有变化的应用\n\n' "$SOURCE_URL" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "$PREVIOUS_REVISION" ]]; then
+            echo '无法比较：没有可用的上次发布记录。' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == schedule && "$PREVIOUS_REVISION" == "$SOURCE_REVISION" ]]; then
+            echo '无应用变化。' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$PREVIOUS_REVISION" != "$SOURCE_REVISION" ]] && \
+            ! git -C "$RUNNER_TEMP/source" fetch --depth=1 origin "$PREVIOUS_REVISION"; then
+            echo '无法比较：上次发布的源码快照无法获取。' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if app_list=$(git -C "$RUNNER_TEMP/source" diff --no-renames --name-only -z \
+            "$PREVIOUS_REVISION" "$SOURCE_REVISION" -- apps/ | jq -Rrs '
+              split("\u0000")
+              | map(split("/") | select(length > 2 and .[0] == "apps") | .[1])
+              | unique
+              | if length == 0 then "无应用变化。" else .[] | "- <code>\(@html)</code>" end
+            '); then
+            printf '%s\n' "$app_list" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '无法比较：源码快照差异读取失败，请查看本步骤日志。' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Package repository files
+        if: github.event_name == 'workflow_dispatch' || steps.compare.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/repository-image"
+          cd "$RUNNER_TEMP/source"
           # Archive the checkout's tracked files so export-ignore/export-subst cannot change the snapshot.
           git ls-files -z | tar --create --file="$RUNNER_TEMP/repository-image/repository.tar" \
             --format=gnu --owner=0 --group=0 --numeric-owner \
